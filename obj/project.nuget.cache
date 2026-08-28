@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "r881xkS7gQo=",
+  "success": true,
+  "projectFilePath": "/home/lsmescolotto/estudos/url-shortener/url-shortener.csproj",
+  "expectedPackageFiles": [
+    "/home/lsmescolotto/.nuget/packages/microsoft.aspnetcore.openapi/10.0.11/microsoft.aspnetcore.openapi.10.0.11.nupkg.sha512",
+    "/home/lsmescolotto/.nuget/packages/microsoft.openapi/2.7.5/microsoft.openapi.2.7.5.nupkg.sha512"
+  ],
+  "logs": []
+}
