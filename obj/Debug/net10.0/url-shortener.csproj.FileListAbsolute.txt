@@ -31,3 +31,4 @@
 /home/lsmescolotto/estudos/url-shortener/obj/Debug/net10.0/url-shortener.pdb
 /home/lsmescolotto/estudos/url-shortener/obj/Debug/net10.0/url-shortener.genruntimeconfig.cache
 /home/lsmescolotto/estudos/url-shortener/obj/Debug/net10.0/ref/url-shortener.dll
+/home/lsmescolotto/estudos/url-shortener/obj/Debug/net10.0/url-shortener.sourcelink.json
