@@ -17,7 +17,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapPost("/urls", (CreateUrlRequest request) => {
-  Console.WriteLine($"Received request to shorten URL: {request.Url}");
   if (!Uri.TryCreate(request.Url, UriKind.Absolute, out Uri? uriResult) ||
   !(uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
   {
@@ -77,26 +76,42 @@ app.MapPost("/urls", (CreateUrlRequest request) => {
 });
 
 app.MapGet("/urls/{code}", (string code) => {
-  var url = new UrlResponse(
-    Guid.NewGuid().ToString(),
-    "https://example.com",
-    code,
-    DateTime.UtcNow,
-    DateTime.UtcNow.AddMinutes(60),
-    60,
-    0
-  );
-  return url;
+  //esse aqui é pra retornar só a url
+  bool found = urlsList.TryGetValue(code, out UrlResponse? urlResponse);
+
+  if (!found)
+  {
+    return Results.NotFound(new { message = "Short code not found." });
+  }
+
+  if (urlResponse?.ExpiresAt <= DateTime.UtcNow)
+  {
+    return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
+  }
+
+  return Results.Ok(urlResponse?.OriginalUrl);
 }
 );
 
 app.MapGet("/urls/{code}/stats", (string code) => {
+  //esse aqui é pra retornar as estatisticas
+  bool found = urlsList.TryGetValue(code, out UrlResponse? urlResponse);
 
+  if (!found)
+  {
+    return Results.NotFound(new { message = "Short code not found. No statistics available." });
+  }
+  return Results.Ok(urlResponse);
 }
 );
 
 app.MapDelete("/urls/{code}", (string code) => {
-
+  bool removed = urlsList.Remove(code);
+  if (!removed)
+  {
+    return Results.NotFound(new { message = "Short code not found. Not able to delete." });
+  }
+  return Results.NoContent();
 }
 );
 
@@ -113,7 +128,7 @@ record UrlResponse(
   string OriginalUrl,
   string ShortCode,
   DateTime CreatedAt,
-  DateTime EspiresAt,
+  DateTime ExpiresAt,
   int ExpirationInMinutes,
   int ClickCount
 );
