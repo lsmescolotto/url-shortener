@@ -84,12 +84,13 @@ app.MapGet("/urls/{code}", (string code) => {
     return Results.NotFound(new { message = "Short code not found." });
   }
 
-  if (urlResponse?.ExpiresAt <= DateTime.UtcNow)
+  if (urlResponse!.ExpiresAt <= DateTime.UtcNow)
   {
     return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
   }
+  urlsList[code] = urlResponse! with { ClickCount = urlResponse.ClickCount + 1 };
 
-  return Results.Ok(urlResponse?.OriginalUrl);
+  return Results.Redirect(urlResponse!.OriginalUrl);
 }
 );
 
