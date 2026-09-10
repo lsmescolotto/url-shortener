@@ -1,12 +1,10 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-var urlsList = new Dictionary<string, UrlResponse>();
+var urlsList = new Dictionary<string, ShortUrl>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -17,86 +15,58 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapPost("/urls", (CreateUrlRequest request) => {
-  if (!Uri.TryCreate(request.Url, UriKind.Absolute, out Uri? uriResult) ||
-  !(uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+  if (!string.IsNullOrWhiteSpace(request.ShortCode) && urlsList.ContainsKey(request.ShortCode))
   {
-    return Results.BadRequest(new { message = "Invalid URL format." });
+    return Results.Conflict(new { message = "Short code already exists." });
   }
 
-  if (request.ExpirationInMinutes <= 0 && request.ExpirationInMinutes.HasValue)
+  try
   {
-    return Results.BadRequest(new { message = "ExpirationInMinutes must be greater than 0." });
-  }
+    var urlResponse = new ShortUrl(
+      request.Url,
+      request.ShortCode,
+      request.ExpirationInMinutes ?? 60
+    );
 
-  string code;
 
-  if (request.ShortCode != null)
-  {
-    if (string.IsNullOrWhiteSpace(request.ShortCode))
+    while (urlsList.ContainsKey(urlResponse.ShortCode))
     {
-      return Results.BadRequest(new { message = "ShortCode must not be empty or contain only whitespace." });
+      urlResponse.GenerateNewShortCode();
     }
-    else if (request.ShortCode.Length < 4 || request.ShortCode.Length > 20)
-    {
-      return Results.BadRequest(new { message = "ShortCode must be between 4 and 20 characters long." });
-    }
-    code = request.ShortCode;
 
+    urlsList.TryAdd(urlResponse.ShortCode, urlResponse);
+
+    return Results.Created($"/urls/{urlResponse.ShortCode}", urlResponse);
   }
-  else
+  catch (System.ArgumentException ex)
   {
-    code = Guid.NewGuid().ToString().Substring(0, 7);
+    return Results.BadRequest(new { message = ex.Message });
   }
 
-  Console.WriteLine($"URI: {uriResult}");
-  string id = Guid.NewGuid().ToString();
 
-  while (urlsList.ContainsKey(code))
-  {
-    if (!string.IsNullOrEmpty(request.ShortCode))
-    {
-      return Results.Conflict(new { message = "Short code already exists." });
-    }
-    code = Guid.NewGuid().ToString().Substring(0, 7);
-  }
-
-  var urlResponse = new UrlResponse(
-    id,
-    uriResult.ToString(),
-    code,
-    DateTime.UtcNow,
-    DateTime.UtcNow.AddMinutes(request.ExpirationInMinutes ?? 60),
-    request.ExpirationInMinutes ?? 60,
-    0
-  );
-
-  urlsList.TryAdd(code, urlResponse);
-
-  return Results.Created($"/urls/{code}", urlResponse);
 });
 
 app.MapGet("/urls/{code}", (string code) => {
   //esse aqui é pra retornar só a url
-  bool found = urlsList.TryGetValue(code, out UrlResponse? urlResponse);
 
-  if (!found)
+  if (!urlsList.TryGetValue(code, out ShortUrl? urlResponse))
   {
     return Results.NotFound(new { message = "Short code not found." });
   }
 
-  if (urlResponse!.ExpiresAt <= DateTime.UtcNow)
+  if (urlResponse.ExpiresAt <= DateTime.UtcNow)
   {
     return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
   }
-  urlsList[code] = urlResponse! with { ClickCount = urlResponse.ClickCount + 1 };
+  urlResponse.IncrementClickCount();
 
-  return Results.Redirect(urlResponse!.OriginalUrl);
+  return Results.Redirect(urlResponse.OriginalUrl);
 }
 );
 
 app.MapGet("/urls/{code}/stats", (string code) => {
   //esse aqui é pra retornar as estatisticas
-  bool found = urlsList.TryGetValue(code, out UrlResponse? urlResponse);
+  bool found = urlsList.TryGetValue(code, out ShortUrl? urlResponse);
 
   if (!found)
   {
@@ -133,3 +103,71 @@ record UrlResponse(
   int ExpirationInMinutes,
   int ClickCount
 );
+
+public class ShortUrl
+{
+  public Guid Id { get; private set; }
+  public string OriginalUrl { get; private set; }
+  public string ShortCode { get; private set; }
+  public DateTime CreatedAt { get; private set; }
+  public DateTime ExpiresAt { get; private set; }
+  public int ExpirationInMinutes { get; private set; }
+  public int ClickCount { get; private set; }
+
+  public ShortUrl(string OriginalUrl, string? ShortCode = null, int ExpirationInMinutes = 60)
+  {
+    //OriginalUrl
+    if (!Uri.TryCreate(OriginalUrl, UriKind.Absolute, out Uri? uriResult) ||
+    !(uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+    {
+      throw new ArgumentException("Invalid URL format.", nameof(OriginalUrl));
+    }
+    this.OriginalUrl = uriResult.ToString();
+
+    //ExpirationInMinutes
+    if (ExpirationInMinutes <= 0)
+    {
+      throw new ArgumentException("ExpirationInMinutes must be greater than 0.", nameof(ExpirationInMinutes));
+    }
+    this.ExpirationInMinutes = ExpirationInMinutes;
+
+    //ShortCode
+    if (ShortCode != null)
+    {
+      if (string.IsNullOrWhiteSpace(ShortCode))
+      {
+        throw new ArgumentException("ShortCode must not be empty or contain only whitespace.", nameof(ShortCode));
+      }
+      else if (ShortCode.Length < 4 || ShortCode.Length > 20)
+      {
+        throw new ArgumentException("ShortCode must be between 4 and 20 characters long.", nameof(ShortCode));
+      }
+      this.ShortCode = ShortCode;
+    }
+    else
+    {
+      this.ShortCode = GenerateShortCode();
+    }
+
+    var createdAt = DateTime.UtcNow;
+    this.CreatedAt = createdAt;
+    this.ExpiresAt = createdAt.AddMinutes(ExpirationInMinutes);
+    this.Id = Guid.NewGuid();
+    this.ClickCount = 0;
+  }
+  public void IncrementClickCount()
+  {
+    this.ClickCount++;
+  }
+
+  public void GenerateNewShortCode()
+  {
+    this.ShortCode = GenerateShortCode();
+  }
+
+  private static string GenerateShortCode()
+  {
+    return Guid.NewGuid().ToString().Substring(0, 7);
+  }
+}
+
