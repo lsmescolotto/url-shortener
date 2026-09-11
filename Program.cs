@@ -22,63 +22,59 @@ app.MapPost("/urls", (CreateUrlRequest request) => {
 
   try
   {
-    var urlResponse = new ShortUrl(
+    var shortUrl = new ShortUrl(
       request.Url,
       request.ShortCode,
       request.ExpirationInMinutes ?? 60
     );
 
 
-    while (urlsList.ContainsKey(urlResponse.ShortCode))
+    while (urlsList.ContainsKey(shortUrl.ShortCode))
     {
-      urlResponse.GenerateNewShortCode();
+      shortUrl.GenerateNewShortCode();
     }
 
-    urlsList.TryAdd(urlResponse.ShortCode, urlResponse);
+    urlsList.TryAdd(shortUrl.ShortCode, shortUrl);
 
-    return Results.Created($"/urls/{urlResponse.ShortCode}", urlResponse);
+    return Results.Created($"/urls/{shortUrl.ShortCode}", shortUrl);
   }
   catch (System.ArgumentException ex)
   {
     return Results.BadRequest(new { message = ex.Message });
   }
-
-
 });
 
 app.MapGet("/urls/{code}", (string code) => {
   //esse aqui é pra retornar só a url
 
-  if (!urlsList.TryGetValue(code, out ShortUrl? urlResponse))
+  if (!urlsList.TryGetValue(code, out ShortUrl? shortUrl))
   {
     return Results.NotFound(new { message = "Short code not found." });
   }
 
-  if (urlResponse.ExpiresAt <= DateTime.UtcNow)
+  if (shortUrl.ExpiresAt <= DateTime.UtcNow)
   {
     return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
   }
-  urlResponse.IncrementClickCount();
+  shortUrl.IncrementClickCount();
 
-  return Results.Redirect(urlResponse.OriginalUrl);
+  return Results.Redirect(shortUrl.OriginalUrl);
 }
 );
 
 app.MapGet("/urls/{code}/stats", (string code) => {
   //esse aqui é pra retornar as estatisticas
-  bool found = urlsList.TryGetValue(code, out ShortUrl? urlResponse);
 
-  if (!found)
+  if (!urlsList.TryGetValue(code, out ShortUrl? shortUrl))
   {
     return Results.NotFound(new { message = "Short code not found. No statistics available." });
   }
-  return Results.Ok(urlResponse);
+  return Results.Ok(shortUrl);
 }
 );
 
 app.MapDelete("/urls/{code}", (string code) => {
-  bool removed = urlsList.Remove(code);
-  if (!removed)
+  if (!urlsList.Remove(code))
   {
     return Results.NotFound(new { message = "Short code not found. Not able to delete." });
   }
