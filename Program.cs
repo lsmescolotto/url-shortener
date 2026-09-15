@@ -1,6 +1,15 @@
 var builder = WebApplication.CreateBuilder(args);
-
 builder.Services.AddOpenApi();
+
+var defaultConnection = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(defaultConnection))
+{
+  throw new InvalidOperationException("DefaultConnection string is not configured.");
+}
+
+// using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+// connection.Open();
 
 var app = builder.Build();
 
@@ -13,6 +22,19 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.MapGet("/db-test", () => {
+  using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  connection.Open();
+  var command = connection.CreateCommand();
+  command.CommandText = "SELECT 1";
+  var result = command.ExecuteScalar();
+
+  return Results.Ok(new { message = "Database connection successful.", result });
+}
+
+
+);
 
 app.MapPost("/urls", (CreateUrlRequest request) => {
   if (!string.IsNullOrWhiteSpace(request.ShortCode) && urlsList.ContainsKey(request.ShortCode))
@@ -88,16 +110,6 @@ record CreateUrlRequest(
   string Url,
   string? ShortCode,
   int? ExpirationInMinutes
-);
-
-record UrlResponse(
-  string Id,
-  string OriginalUrl,
-  string ShortCode,
-  DateTime CreatedAt,
-  DateTime ExpiresAt,
-  int ExpirationInMinutes,
-  int ClickCount
 );
 
 public class ShortUrl
