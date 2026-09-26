@@ -27,7 +27,7 @@ app.MapGet("/db-test", () => {
   using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
   connection.Open();
   var command = connection.CreateCommand();
-  command.CommandText = "SELECT 1";
+  command.CommandText = "SELECT COUNT(*) FROM short_urls";
   var result = command.ExecuteScalar();
 
   return Results.Ok(new { message = "Database connection successful.", result });
@@ -84,10 +84,23 @@ app.MapGet("/urls/{code}", (string code) => {
 }
 );
 
-app.MapGet("/urls/{code}/stats", (string code) => {
+app.MapGet("/urls/{code}/stats", async (string code) => {
   //esse aqui é pra retornar as estatisticas
+  using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  connection.Open();
 
-  if (!urlsList.TryGetValue(code, out ShortUrl? shortUrl))
+  var command = connection.CreateCommand();
+
+  command.CommandText = "SELECT * FROM short_urls WHERE short_code = @short_code";
+  command.Parameters.AddWithValue("@short_code", code);
+
+  var result = await command.ExecuteReaderAsync();
+  var shortUrlBool = await result.ReadAsync();
+
+
+  Console.WriteLine("bool short url: " + shortUrlBool);
+
+  if (!shortUrlBool)
   {
     return Results.NotFound(new { message = "Short code not found. No statistics available." });
   }
