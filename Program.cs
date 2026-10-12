@@ -66,21 +66,32 @@ app.MapPost("/urls", (CreateUrlRequest request) => {
   }
 });
 
-app.MapGet("/urls/{code}", (string code) => {
+app.MapGet("/urls/{code}", async (string code) => {
   //esse aqui é pra retornar só a url
+  using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  await connection.OpenAsync();
 
-  if (!urlsList.TryGetValue(code, out ShortUrl? shortUrl))
+  var command = connection.CreateCommand();
+
+  command.CommandText = "SELECT original_url, expires_at, click_count FROM short_urls WHERE short_code = @short_code";
+  command.Parameters.AddWithValue("@short_code", code);
+
+  var result = await command.ExecuteReaderAsync();
+  bool urlFound = await result.ReadAsync();
+
+  if (!urlFound)
   {
     return Results.NotFound(new { message = "Short code not found." });
   }
-
-  if (shortUrl.ExpiresAt <= DateTime.UtcNow)
+  var expiresAt = result.GetDateTime(result.GetOrdinal("expires_at"));
+  if (expiresAt <= DateTime.UtcNow)
   {
     return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
   }
-  shortUrl.IncrementClickCount();
+  int clickCount = result.GetInt32(result.GetOrdinal("click_count"));
+  //TODO: click count and redirect
 
-  return Results.Redirect(shortUrl.OriginalUrl);
+  return Results.Redirect("");
 }
 );
 
