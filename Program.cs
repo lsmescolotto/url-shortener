@@ -95,16 +95,23 @@ app.MapGet("/urls/{code}/stats", async (string code) => {
   command.Parameters.AddWithValue("@short_code", code);
 
   var result = await command.ExecuteReaderAsync();
-  var shortUrlBool = await result.ReadAsync();
+  bool urlFound = await result.ReadAsync();
 
-
-  Console.WriteLine("bool short url: " + shortUrlBool);
-
-  if (!shortUrlBool)
+  if (!urlFound)
   {
     return Results.NotFound(new { message = "Short code not found. No statistics available." });
   }
-  return Results.Ok(shortUrl);
+
+  string shortCode = result.GetString(result.GetOrdinal("short_code"));
+  string originalUrl = result.GetString(result.GetOrdinal("original_url"));
+  int expirationInMinutes = result.GetInt32(result.GetOrdinal("expiration_in_minutes"));
+  int clickCount = result.GetInt32(result.GetOrdinal("click_count"));
+  var id = result.GetGuid(result.GetOrdinal("id"));
+  var createdAt = result.GetDateTime(result.GetOrdinal("created_at"));
+  var expiresAt = result.GetDateTime(result.GetOrdinal("expires_at"));
+
+  var shortUrlStats = new ShortUrlStatsResponse(id, createdAt, shortCode, originalUrl, expirationInMinutes, clickCount, expiresAt);
+  return Results.Ok(shortUrlStats);
 }
 );
 
