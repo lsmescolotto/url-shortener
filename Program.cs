@@ -87,7 +87,7 @@ app.MapGet("/urls/{code}", (string code) => {
 app.MapGet("/urls/{code}/stats", async (string code) => {
   //esse aqui é pra retornar as estatisticas
   using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
-  connection.Open();
+  await connection.OpenAsync();
 
   var command = connection.CreateCommand();
 
@@ -115,8 +115,18 @@ app.MapGet("/urls/{code}/stats", async (string code) => {
 }
 );
 
-app.MapDelete("/urls/{code}", (string code) => {
-  if (!urlsList.Remove(code))
+app.MapDelete("/urls/{code}", async (string code) => {
+  using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  await connection.OpenAsync();
+
+  var command = connection.CreateCommand();
+
+  command.CommandText = "DELETE FROM short_urls WHERE short_code = @short_code";
+  command.Parameters.AddWithValue("@short_code", code);
+
+  int result = await command.ExecuteNonQueryAsync();
+
+  if (result == 0)
   {
     return Results.NotFound(new { message = "Short code not found. Not able to delete." });
   }
