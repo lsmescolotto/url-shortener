@@ -78,6 +78,7 @@ app.MapGet("/urls/{code}", async (string code) => {
 
   var result = await command.ExecuteReaderAsync();
   bool urlFound = await result.ReadAsync();
+  string url = result.GetString(result.GetOrdinal("original_url"));
 
   if (!urlFound)
   {
@@ -89,9 +90,14 @@ app.MapGet("/urls/{code}", async (string code) => {
     return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
   }
   int clickCount = result.GetInt32(result.GetOrdinal("click_count"));
+
+  command.CommandText = "UPDATE short_urls SET click_count = click_count +1 WHERE short_code = @short_code";
+  await command.ExecuteNonQueryAsync();
   //TODO: click count and redirect
 
-  return Results.Redirect("");
+
+
+  return Results.Redirect(url);
 }
 );
 
