@@ -36,7 +36,25 @@ app.MapGet("/db-test", () => {
 
 );
 
-app.MapPost("/urls", (CreateUrlRequest request) => {
+app.MapPost("/urls", async (CreateUrlRequest request) => {
+  var shortUrl = new ShortUrl(
+    request.Url,
+    request.ShortCode,
+    request.ExpirationInMinutes ?? 60
+  );
+
+  await using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  connection.Open();
+
+  await using var command = connection.CreateCommand();
+  command.CommandText = "INSERT INTO short_urls (id, original_url, short_code, created_at, expires_at, expiration_in_minutes, click_count) VALUES (@id, @originalUrl, @shortCode, @createdAt, @expiresAt, @expirationInMinutes)";
+  command.Parameters.AddWithValue("@id", shortUrl.Id);
+  command.Parameters.AddWithValue("@originalUrl", shortUrl.OriginalUrl);
+  command.Parameters.AddWithValue("@shortCode", shortUrl.ShortCode);
+  command.Parameters.AddWithValue("@createdAt", shortUrl.CreatedAt);
+  command.Parameters.AddWithValue("@expiresAt", shortUrl.ExpiresAt);
+  command.Parameters.AddWithValue("@expirationInMinutes", shortUrl.ExpirationInMinutes);
+
   if (!string.IsNullOrWhiteSpace(request.ShortCode) && urlsList.ContainsKey(request.ShortCode))
   {
     return Results.Conflict(new { message = "Short code already exists." });
@@ -44,11 +62,7 @@ app.MapPost("/urls", (CreateUrlRequest request) => {
 
   try
   {
-    var shortUrl = new ShortUrl(
-      request.Url,
-      request.ShortCode,
-      request.ExpirationInMinutes ?? 60
-    );
+
 
 
     while (urlsList.ContainsKey(shortUrl.ShortCode))
@@ -68,34 +82,37 @@ app.MapPost("/urls", (CreateUrlRequest request) => {
 
 app.MapGet("/urls/{code}", async (string code) => {
   //esse aqui é pra retornar só a url
-  using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+  await using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
   await connection.OpenAsync();
 
-  var command = connection.CreateCommand();
+  await using var command = connection.CreateCommand();
 
-  command.CommandText = "SELECT original_url, expires_at, click_count FROM short_urls WHERE short_code = @short_code";
+  command.CommandText = "SELECT original_url, expires_at FROM short_urls WHERE short_code = @short_code";
   command.Parameters.AddWithValue("@short_code", code);
 
-  var result = await command.ExecuteReaderAsync();
-  bool urlFound = await result.ReadAsync();
-  string url = result.GetString(result.GetOrdinal("original_url"));
+  string url;
 
-  if (!urlFound)
   {
-    return Results.NotFound(new { message = "Short code not found." });
+    await using var result = await command.ExecuteReaderAsync();
+    bool urlFound = await result.ReadAsync();
+
+    if (!urlFound)
+    {
+      return Results.NotFound(new { message = "Short code not found." });
+    }
+
+    var expiresAt = result.GetDateTime(result.GetOrdinal("expires_at"));
+
+    if (expiresAt <= DateTime.UtcNow)
+    {
+      return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
+    }
+
+    url = result.GetString(result.GetOrdinal("original_url"));
   }
-  var expiresAt = result.GetDateTime(result.GetOrdinal("expires_at"));
-  if (expiresAt <= DateTime.UtcNow)
-  {
-    return Results.NotFound(new { message = "Short code has expired. To access this short code statistics, consult the '/urls/{code}/stats' get endpoint." });
-  }
-  int clickCount = result.GetInt32(result.GetOrdinal("click_count"));
 
   command.CommandText = "UPDATE short_urls SET click_count = click_count +1 WHERE short_code = @short_code";
   await command.ExecuteNonQueryAsync();
-  //TODO: click count and redirect
-
-
 
   return Results.Redirect(url);
 }
