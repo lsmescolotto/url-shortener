@@ -13,8 +13,6 @@ if (string.IsNullOrWhiteSpace(defaultConnection))
 
 var app = builder.Build();
 
-var urlsList = new Dictionary<string, ShortUrl>();
-
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -37,46 +35,65 @@ app.MapGet("/db-test", () => {
 );
 
 app.MapPost("/urls", async (CreateUrlRequest request) => {
-  var shortUrl = new ShortUrl(
-    request.Url,
-    request.ShortCode,
-    request.ExpirationInMinutes ?? 60
-  );
-
-  await using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
-  connection.Open();
-
-  await using var command = connection.CreateCommand();
-  command.CommandText = "INSERT INTO short_urls (id, original_url, short_code, created_at, expires_at, expiration_in_minutes, click_count) VALUES (@id, @originalUrl, @shortCode, @createdAt, @expiresAt, @expirationInMinutes)";
-  command.Parameters.AddWithValue("@id", shortUrl.Id);
-  command.Parameters.AddWithValue("@originalUrl", shortUrl.OriginalUrl);
-  command.Parameters.AddWithValue("@shortCode", shortUrl.ShortCode);
-  command.Parameters.AddWithValue("@createdAt", shortUrl.CreatedAt);
-  command.Parameters.AddWithValue("@expiresAt", shortUrl.ExpiresAt);
-  command.Parameters.AddWithValue("@expirationInMinutes", shortUrl.ExpirationInMinutes);
-
-  if (!string.IsNullOrWhiteSpace(request.ShortCode) && urlsList.ContainsKey(request.ShortCode))
-  {
-    return Results.Conflict(new { message = "Short code already exists." });
-  }
-
   try
   {
+    int maxAttemptsToGenerateShortCode = 5;
+    var shortUrl = new ShortUrl(
+      request.Url,
+      request.ShortCode,
+      request.ExpirationInMinutes ?? 60
+    );
 
 
+    await using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
+    await connection.OpenAsync();
 
-    while (urlsList.ContainsKey(shortUrl.ShortCode))
+    await using var command = connection.CreateCommand();
+
+    for (int i = 1; i <= maxAttemptsToGenerateShortCode; i++)
     {
-      shortUrl.GenerateNewShortCode();
+      try
+      {
+        command.CommandText = "INSERT INTO short_urls (id, original_url, short_code, created_at, expires_at, expiration_in_minutes, click_count) VALUES (@id, @originalUrl, @shortCode, @createdAt, @expiresAt, @expirationInMinutes, @clickCount)";
+
+        command.Parameters.AddWithValue("@id", shortUrl.Id);
+        command.Parameters.AddWithValue("@originalUrl", shortUrl.OriginalUrl);
+        command.Parameters.AddWithValue("@shortCode", shortUrl.ShortCode);
+        command.Parameters.AddWithValue("@createdAt", shortUrl.CreatedAt);
+        command.Parameters.AddWithValue("@expiresAt", shortUrl.ExpiresAt);
+        command.Parameters.AddWithValue("@expirationInMinutes", shortUrl.ExpirationInMinutes);
+        command.Parameters.AddWithValue("@clickCount", shortUrl.ClickCount);
+
+        await command.ExecuteNonQueryAsync();
+        return Results.Created($"/urls/{shortUrl.ShortCode}", shortUrl);
+      }
+      catch (Npgsql.PostgresException ex)
+      {
+        if (ex.SqlState == "23505" && ex.ConstraintName == "short_urls_short_code_key")
+        {
+          if (!string.IsNullOrWhiteSpace(request.ShortCode))
+          {
+            return Results.Conflict(new { message = "Short code already exists." });
+          }
+
+        }
+      }
+
+
     }
-
-    urlsList.TryAdd(shortUrl.ShortCode, shortUrl);
-
-    return Results.Created($"/urls/{shortUrl.ShortCode}", shortUrl);
   }
   catch (System.ArgumentException ex)
   {
     return Results.BadRequest(new { message = ex.Message });
+  }
+  catch (Npgsql.PostgresException ex)
+  {
+    Console.WriteLine(ex);
+    if (ex.SqlState == "23505" && ex.ConstraintName == "short_urls_short_code_key")
+    {
+      return Results.Conflict(new { message = "Short code already exists." });
+    }
+    return Results.BadRequest(); //ajustar
   }
 });
 
