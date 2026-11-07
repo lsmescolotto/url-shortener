@@ -50,20 +50,20 @@ app.MapPost("/urls", async (CreateUrlRequest request) => {
 
     await using var command = connection.CreateCommand();
 
+    command.CommandText = "INSERT INTO short_urls (id, original_url, short_code, created_at, expires_at, expiration_in_minutes, click_count) VALUES (@id, @originalUrl, @shortCode, @createdAt, @expiresAt, @expirationInMinutes, @clickCount)";
+
+    command.Parameters.AddWithValue("@id", shortUrl.Id);
+    command.Parameters.AddWithValue("@originalUrl", shortUrl.OriginalUrl);
+    command.Parameters.AddWithValue("@shortCode", shortUrl.ShortCode);
+    command.Parameters.AddWithValue("@createdAt", shortUrl.CreatedAt);
+    command.Parameters.AddWithValue("@expiresAt", shortUrl.ExpiresAt);
+    command.Parameters.AddWithValue("@expirationInMinutes", shortUrl.ExpirationInMinutes);
+    command.Parameters.AddWithValue("@clickCount", shortUrl.ClickCount);
+
     for (int i = 1; i <= maxAttemptsToGenerateShortCode; i++)
     {
       try
       {
-        command.CommandText = "INSERT INTO short_urls (id, original_url, short_code, created_at, expires_at, expiration_in_minutes, click_count) VALUES (@id, @originalUrl, @shortCode, @createdAt, @expiresAt, @expirationInMinutes, @clickCount)";
-
-        command.Parameters.AddWithValue("@id", shortUrl.Id);
-        command.Parameters.AddWithValue("@originalUrl", shortUrl.OriginalUrl);
-        command.Parameters.AddWithValue("@shortCode", shortUrl.ShortCode);
-        command.Parameters.AddWithValue("@createdAt", shortUrl.CreatedAt);
-        command.Parameters.AddWithValue("@expiresAt", shortUrl.ExpiresAt);
-        command.Parameters.AddWithValue("@expirationInMinutes", shortUrl.ExpirationInMinutes);
-        command.Parameters.AddWithValue("@clickCount", shortUrl.ClickCount);
-
         await command.ExecuteNonQueryAsync();
         return Results.Created($"/urls/{shortUrl.ShortCode}", shortUrl);
       }
@@ -75,12 +75,17 @@ app.MapPost("/urls", async (CreateUrlRequest request) => {
           {
             return Results.Conflict(new { message = "Short code already exists." });
           }
-
+          if (i < maxAttemptsToGenerateShortCode)
+          {
+            shortUrl.GenerateNewShortCode();
+            command.Parameters["@shortCode"].Value = shortUrl.ShortCode;
+            continue;
+          }
         }
+        throw;
       }
-
-
     }
+    return Results.InternalServerError(new { message = "It was not possible to complete your request." });
   }
   catch (System.ArgumentException ex)
   {
@@ -88,12 +93,7 @@ app.MapPost("/urls", async (CreateUrlRequest request) => {
   }
   catch (Npgsql.PostgresException ex)
   {
-    Console.WriteLine(ex);
-    if (ex.SqlState == "23505" && ex.ConstraintName == "short_urls_short_code_key")
-    {
-      return Results.Conflict(new { message = "Short code already exists." });
-    }
-    return Results.BadRequest(); //ajustar
+    return Results.InternalServerError(new { message = "It was not possible to complete your request." });
   }
 });
 
