@@ -98,7 +98,7 @@ app.MapPost("/urls", async (CreateUrlRequest request) => {
 });
 
 app.MapGet("/urls/{code}", async (string code) => {
-  //esse aqui é pra retornar só a url
+  //redirects to the original url
   await using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
   await connection.OpenAsync();
 
@@ -136,7 +136,7 @@ app.MapGet("/urls/{code}", async (string code) => {
 );
 
 app.MapGet("/urls/{code}/stats", async (string code) => {
-  //esse aqui é pra retornar as estatisticas
+  //returns short code statistics
   using var connection = new Npgsql.NpgsqlConnection(defaultConnection);
   await connection.OpenAsync();
 
