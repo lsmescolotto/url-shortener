@@ -1,3 +1,5 @@
+namespace UrlShortener.DTOs;
+
 public record ShortUrlStatsResponse
 (
   Guid Id,
