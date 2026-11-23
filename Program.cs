@@ -30,8 +30,9 @@ app.MapGet("/db-test", () => {
   var command = connection.CreateCommand();
   command.CommandText = "SELECT COUNT(*) FROM short_urls";
   var result = command.ExecuteScalar();
+    Console.WriteLine(result);
 
-  return Results.Ok(new { message = "Database connection successful.", result });
+    return Results.Ok(new { message = "Database connection successful.", result });
 }
 );
 
